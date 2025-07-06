@@ -22,11 +22,11 @@ static void parse_remark(Record& record) {
         } catch (...) {}
     }
     // 原产国
-    size_t open_paren = remark.find('（');
-    size_t close_paren = remark.find('）', open_paren);
+    size_t open_paren = remark.find("（");
+    size_t close_paren = remark.find("）", open_paren);
     if (open_paren != std::string::npos && close_paren != std::string::npos && open_paren < close_paren) {
-        record.origin_country = remark.substr(open_paren + 1, close_paren - open_paren - 1);
-        remark = remark.substr(0, open_paren) + remark.substr(close_paren + 1);
+        record.origin_country = remark.substr(open_paren + 3, close_paren - open_paren - 3); // UTF-8下每个全角括号3字节
+        remark = remark.substr(0, open_paren) + remark.substr(close_paren + 3);
     }
     // 产品名
     size_t dash_pos = remark.find('-');
@@ -82,6 +82,40 @@ std::vector<Record> parse_csv(const std::string& filename) {
         }
         // 兼容多余字段
         getline(ss, record.extra);
+
+        // --- 修正：去除所有字段首尾空白和不可见字符 ---
+        auto trim = [](std::string& s) {
+            s.erase(0, s.find_first_not_of(" \t\r\n\v\f"));
+            s.erase(s.find_last_not_of(" \t\r\n\v\f") + 1);
+        };
+        trim(record.type);
+        trim(record.remark);
+        trim(amount_str);
+        trim(record.time);
+        trim(record.extra);
+
+        // 检查所有字段是否为有效UTF-8（简单过滤非法字节）
+        auto is_valid_utf8 = [](const std::string& str) {
+            int c,i,ix,n,j;
+            for (i=0, ix=str.length(); i < ix; i++) {
+                c = (unsigned char) str[i];
+                if (0x00 <= c && c <= 0x7f) n=0; // 0bbbbbbb
+                else if ((c & 0xE0) == 0xC0) n=1; // 110bbbbb
+                else if ( c==0xed && i<(ix-1) && ((unsigned char)str[i+1] & 0xa0)==0xa0) return false; // 禁止代理区
+                else if ((c & 0xF0) == 0xE0) n=2; // 1110bbbb
+                else if ((c & 0xF8) == 0xF0) n=3; // 11110bbb
+                else return false;
+                for (j=0; j<n && i<ix; j++) {
+                    if ((++i == ix) || (( (unsigned char)str[i] & 0xC0 ) != 0x80)) return false;
+                }
+            }
+            return true;
+        };
+        if (!is_valid_utf8(record.type) || !is_valid_utf8(record.remark) || !is_valid_utf8(record.time) || !is_valid_utf8(amount_str)) {
+            std::cerr << "警告: 第" << line_num << "行存在非法UTF-8字符，已跳过。" << std::endl;
+            continue;
+        }
+
         try {
             record.amount = std::stod(amount_str);
         } catch (...) {
