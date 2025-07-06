@@ -47,5 +47,13 @@ int main(int argc, char* argv[]) {
     jout << result.to_json().dump(2);
     jout.close();
     std::cout << i18n.t("分析已完成，结果已输出到 analysis.json") << std::endl;
+
+    // 统计信息
+    Stats global_stats;
+    std::map<std::string, Stats> type_stats, product_stats, country_stats, monthly_stats, unit_price_stats;
+    compute_stats(records, type_stats, product_stats, country_stats, monthly_stats, unit_price_stats, global_stats);
+    // 输出国际化文本报告
+    generate_report_i18n(records, global_stats, type_stats, product_stats, country_stats, monthly_stats, unit_price_stats, i18n, "report.txt");
+
     return 0;
 }

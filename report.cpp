@@ -1,10 +1,24 @@
+
+#include <string>
+namespace {
+static std::string str_replace_all(std::string s, const std::string& from, const std::string& to) {
+    size_t pos = 0;
+    while ((pos = s.find(from, pos)) != std::string::npos) {
+        s.replace(pos, from.length(), to);
+        pos += to.length();
+    }
+    return s;
+}
+}
 #include "include/report.h"
+#include "include/i18n.h"
 #include <fstream>
 #include <iomanip>
 #include <ctime>
 #include <numeric>
 #include <algorithm>
 #include <set>
+#include <string>
 
 static std::string extract_weekday(const Record& record) {
     const char* weekdays[] = {"日", "一", "二", "三", "四", "五", "六"};
@@ -21,42 +35,43 @@ static std::string sentiment_analysis(const std::string& remark) {
     return "中性/正面";
 }
 
-void generate_report(const std::vector<Record>& records, const Stats& global_stats, const std::map<std::string, Stats>& type_stats, const std::map<std::string, Stats>& product_stats, const std::map<std::string, Stats>& country_stats, const std::map<std::string, Stats>& monthly_stats, const std::map<std::string, Stats>& unit_price_stats, const std::string& filename) {
+// 国际化文本报告生成
+void generate_report_i18n(const std::vector<Record>& records, const Stats& global_stats, const std::map<std::string, Stats>& type_stats, const std::map<std::string, Stats>& product_stats, const std::map<std::string, Stats>& country_stats, const std::map<std::string, Stats>& monthly_stats, const std::map<std::string, Stats>& unit_price_stats, const I18N& i18n, const std::string& filename) {
     std::ofstream report(filename);
     time_t now = time(nullptr);
     tm* now_tm = localtime(&now);
-    report << "==================== 高级消费数据分析报告 ====================\n";
-    report << "分析时间: " << std::put_time(now_tm, "%Y-%m-%d %H:%M:%S") << "\n";
-    report << "总记录数: " << records.size() << "\n";
-    report << "总消费金额: " << std::fixed << std::setprecision(2) << global_stats.total << " 元\n";
-    report << "单笔平均消费: " << global_stats.avg << " 元\n";
-    report << "单笔最低消费: " << global_stats.min << " 元\n";
-    report << "单笔最高消费: " << global_stats.max << " 元\n";
-    report << "消费金额中位数: " << global_stats.median() << " 元\n";
-    report << "消费金额标准差: " << global_stats.std_dev() << " 元 (波动率)\n\n";
+    report << "==================== " << i18n.t("report_title") << " ====================\n";
+    report << i18n.t("analysis_time") << ": " << std::put_time(now_tm, "%Y-%m-%d %H:%M:%S") << "\n";
+    report << i18n.t("total_records") << ": " << records.size() << "\n";
+    report << i18n.t("total_amount") << ": " << std::fixed << std::setprecision(2) << global_stats.total << " " << i18n.t("yuan") << "\n";
+    report << i18n.t("avg_amount") << ": " << global_stats.avg << " " << i18n.t("yuan") << "\n";
+    report << i18n.t("min_amount") << ": " << global_stats.min << " " << i18n.t("yuan") << "\n";
+    report << i18n.t("max_amount") << ": " << global_stats.max << " " << i18n.t("yuan") << "\n";
+    report << i18n.t("median_amount") << ": " << global_stats.median() << " " << i18n.t("yuan") << "\n";
+    report << i18n.t("stddev_amount") << ": " << global_stats.std_dev() << " " << i18n.t("yuan") << " (" << i18n.t("volatility") << ")\n\n";
     // 按类别统计
-    report << "==================== 按消费类别分析 ====================\n";
+    report << "==================== " << i18n.t("category_analysis") << " ====================\n";
     std::vector<std::pair<std::string, Stats>> sorted_types(type_stats.begin(), type_stats.end());
     std::sort(sorted_types.begin(), sorted_types.end(), [](const auto& a, const auto& b) { return a.second.total > b.second.total; });
     for (const auto& [type, stat] : sorted_types) {
         report << "[" << type << "]\n";
-        report << "  总消费: " << stat.total << " 元 (" << std::fixed << std::setprecision(1) << (stat.total * 100.0 / global_stats.total) << "%)\n";
-        report << "  交易次数: " << stat.count << "\n";
-        report << "  平均消费: " << stat.avg << " 元/次\n";
-        report << "  价格区间: " << stat.min << " - " << stat.max << " 元\n\n";
+        report << "  " << i18n.t("total") << ": " << stat.total << " " << i18n.t("yuan") << " (" << std::fixed << std::setprecision(1) << (stat.total * 100.0 / global_stats.total) << "%)\n";
+        report << "  " << i18n.t("count") << ": " << stat.count << "\n";
+        report << "  " << i18n.t("avg") << ": " << stat.avg << " " << i18n.t("per_time") << "\n";
+        report << "  " << i18n.t("range") << ": " << stat.min << " - " << stat.max << " " << i18n.t("yuan") << "\n\n";
     }
     // 按产品统计
-    report << "==================== 按产品分析 ====================\n";
+    report << "==================== " << i18n.t("product_analysis") << " ====================\n";
     std::vector<std::pair<std::string, Stats>> sorted_products(product_stats.begin(), product_stats.end());
     std::sort(sorted_products.begin(), sorted_products.end(), [](const auto& a, const auto& b) { return a.second.total > b.second.total; });
     for (const auto& [product, stat] : sorted_products) {
         report << "[" << product << "]\n";
-        report << "  总消费: " << stat.total << " 元\n";
-        report << "  购买次数: " << stat.count << "\n";
+        report << "  " << i18n.t("product_total") << ": " << stat.total << " " << i18n.t("yuan") << "\n";
+        report << "  " << i18n.t("product_count") << ": " << stat.count << "\n";
         if (unit_price_stats.count(product)) {
             auto& price_stat = unit_price_stats.at(product);
-            report << "  平均单价: " << price_stat.avg << " 元\n";
-            report << "  单价波动: ±" << price_stat.std_dev() << " 元\n";
+            report << "  " << i18n.t("unit_price_avg") << ": " << price_stat.avg << " " << i18n.t("yuan") << "\n";
+            report << "  " << i18n.t("unit_price_stddev") << ": ±" << price_stat.std_dev() << " " << i18n.t("yuan") << "\n";
         }
         report << "\n";
     }
@@ -82,32 +97,47 @@ void generate_report(const std::vector<Record>& records, const Stats& global_sta
         std::string sentiment = sentiment_analysis(r.remark);
         sentiment_count[sentiment]++;
     }
-    report << "==================== 消费模式识别 ====================\n";
-    report << "1. 黑名单消费分析:\n";
-    report << "   - 黑名单商品数量: " << blacklist_count << " 个 (" << std::fixed << std::setprecision(1) << (blacklist_count * 100.0 / records.size()) << "%)\n";
-    report << "   - 黑名单消费总额: " << blacklist_total << " 元\n";
+    report << "==================== " << i18n.t("pattern_analysis") << " ====================\n";
+    report << "1. " << i18n.t("blacklist_analysis") << ":\n";
+    report << "   - " << i18n.t("blacklist_count") << ": " << blacklist_count << " " << i18n.t("item") << " (" << std::fixed << std::setprecision(1) << (blacklist_count * 100.0 / records.size()) << "%)\n";
+    report << "   - " << i18n.t("blacklist_total") << ": " << blacklist_total << " " << i18n.t("yuan") << "\n";
     if (!blacklist_products.empty()) {
-        report << "   - 主要黑名单商品: ";
+        report << "   - " << i18n.t("blacklist_main") << ": ";
         for (const auto& p : blacklist_products) report << p << ", ";
         report << "\n";
     }
-    report << "\n2. 进口商品分析:\n";
-    report << "   - 进口商品数量: " << imported_count << " 个\n";
-    report << "   - 进口商品消费占比: " << std::fixed << std::setprecision(1) << (imported_total * 100.0 / global_stats.total) << "%\n";
-    report << "\n3. 消费时间分布 (按星期):\n";
+    report << "\n2. " << i18n.t("import_analysis") << ":\n";
+    report << "   - " << i18n.t("import_analysis") << ": " << imported_count << " " << i18n.t("item") << "\n";
+    report << "   - " << i18n.t("total_amount") << ": " << std::fixed << std::setprecision(1) << (imported_total * 100.0 / global_stats.total) << "%\n";
+    report << "\n3. " << i18n.t("time_distribution") << ":\n";
     const char* weekdays[] = {"日", "一", "二", "三", "四", "五", "六"};
     for (const char* day : weekdays) {
         if (weekday_count.find(day) != weekday_count.end()) {
-            report << "   - 星期" << day << ": " << weekday_count[day] << " 笔交易, 总额 " << weekday_amount[day] << " 元, 平均 " << weekday_amount[day] / weekday_count[day] << " 元/笔\n";
+            std::string tpl = i18n.t("weekday_stats");
+            std::string line = tpl;
+            // 替换 {weekday} {count} {total} {avg}
+            size_t pos;
+            while ((pos = line.find("{weekday}")) != std::string::npos) line.replace(pos, 9, day);
+            while ((pos = line.find("{count}")) != std::string::npos) line.replace(pos, 7, std::to_string(weekday_count[day]));
+            while ((pos = line.find("{total}")) != std::string::npos) line.replace(pos, 7, std::to_string(weekday_amount[day]));
+            while ((pos = line.find("{avg}")) != std::string::npos) line.replace(pos, 5, std::to_string(weekday_amount[day] / weekday_count[day]));
+            report << "   - " << line << "\n";
         }
     }
-    report << "\n4. 消费评价情感分析:\n";
+    report << "\n4. " << i18n.t("sentiment_analysis") << ":\n";
     for (const auto& [sentiment, count] : sentiment_count) {
-        report << "   - " << sentiment << "评价: " << count << " 条 (" << std::fixed << std::setprecision(1) << (count * 100.0 / records.size()) << "%)\n";
+        std::string key = (sentiment == "负面") ? "sentiment_negative" : "sentiment_neutral";
+        std::string tpl = i18n.t(key + "_stats");
+        std::string line = tpl;
+        double percent = count * 100.0 / records.size();
+        size_t pos;
+        while ((pos = line.find("{count}")) != std::string::npos) line.replace(pos, 7, std::to_string(count));
+        while ((pos = line.find("{percent}")) != std::string::npos) line.replace(pos, 9, std::to_string(percent));
+        report << "   - " << i18n.t(key) << ": " << line << "\n";
     }
     // 价格弹性分析
-    report << "==================== 价格弹性分析 ====================\n";
-    report << "产品\t平均单价\t总销量\t价格弹性\n";
+    report << "==================== " << i18n.t("elasticity_analysis") << " ====================\n";
+    report << i18n.t("product") << "\t" << i18n.t("unit_price") << "\t" << i18n.t("total_sales") << "\t" << i18n.t("price_elasticity") << "\n";
     for (const auto& [product, stat] : product_stats) {
         if (unit_price_stats.find(product) == unit_price_stats.end()) continue;
         double avg_price = unit_price_stats.at(product).avg;
@@ -120,16 +150,16 @@ void generate_report(const std::vector<Record>& records, const Stats& global_sta
     }
     // 月度趋势分析
     if (monthly_stats.size() > 1) {
-        report << "\n==================== 月度消费趋势 ====================\n";
+        report << "\n==================== " << i18n.t("monthly_trend") << " ====================\n";
         std::vector<std::pair<std::string, Stats>> monthly_sorted(monthly_stats.begin(), monthly_stats.end());
         std::sort(monthly_sorted.begin(), monthly_sorted.end());
         for (size_t i = 0; i < monthly_sorted.size(); i++) {
             const auto& [month, stat] = monthly_sorted[i];
-            report << month << ": " << stat.total << " 元 (" << stat.count << " 笔)";
+            report << month << ": " << stat.total << " " << i18n.t("yuan") << " (" << stat.count << " " << i18n.t("count") << ")";
             if (i > 0) {
                 double prev_total = monthly_sorted[i-1].second.total;
                 double change = (stat.total - prev_total) / prev_total * 100;
-                report << " | 环比: " << (change >= 0 ? "+" : "") << std::fixed << std::setprecision(1) << change << "%";
+                report << " | MoM: " << (change >= 0 ? "+" : "") << std::fixed << std::setprecision(1) << change << "%";
             }
             std::map<std::string, double> type_contrib;
             for (const auto& r : records) {
@@ -140,7 +170,7 @@ void generate_report(const std::vector<Record>& records, const Stats& global_sta
                 }
             }
             if (!type_contrib.empty()) {
-                report << "\n   消费构成: ";
+                report << "\n   " << i18n.t("category_analysis") << ": ";
                 for (const auto& [type, amount] : type_contrib) {
                     report << type << "(" << std::fixed << std::setprecision(0) << (amount * 100 / stat.total) << "%) ";
                 }
@@ -149,29 +179,39 @@ void generate_report(const std::vector<Record>& records, const Stats& global_sta
         }
     }
     // 优化建议
-    report << "\n==================== 消费优化建议 ====================\n";
+    report << "\n==================== " << i18n.t("optimization") << " ====================\n";
     if (blacklist_count > 0) {
-        report << "1. 减少黑名单商品消费:\n";
-        report << "   - 您有 " << blacklist_count << " 笔黑名单商品消费，总额 " << blacklist_total << " 元\n";
-        report << "   - 建议减少购买品质不佳的商品，优化消费选择\n";
+        std::string line = i18n.t("advice_blacklist_count");
+        line = str_replace_all(line, "{count}", std::to_string(blacklist_count));
+        line = str_replace_all(line, "{total}", std::to_string(blacklist_total));
+        line = str_replace_all(line, "{unit}", i18n.t("yuan"));
+        report << "1. " << i18n.t("advice_reduce_blacklist") << "\n";
+        report << "   - " << line << "\n";
+        report << "   - " << i18n.t("advice_blacklist_suggestion") << "\n";
     }
     double luxury_threshold = global_stats.avg * 3;
     int luxury_count = std::count_if(records.begin(), records.end(), [&](const Record& r) { return r.unit_price > luxury_threshold; });
     if (luxury_count > 0) {
-        report << "2. 奢侈品消费优化:\n";
-        report << "   - 您有 " << luxury_count << " 笔奢侈品消费 (单价 > " << luxury_threshold << " 元)\n";
-        report << "   - 建议评估这些高价值商品的性价比和实际需求\n";
+        std::string line = i18n.t("advice_luxury_count");
+        line = str_replace_all(line, "{count}", std::to_string(luxury_count));
+        line = str_replace_all(line, "{threshold}", std::to_string(luxury_threshold));
+        line = str_replace_all(line, "{unit}", i18n.t("yuan"));
+        report << "2. " << i18n.t("advice_luxury_opt") << "\n";
+        report << "   - " << line << "\n";
+        report << "   - " << i18n.t("advice_luxury_suggestion") << "\n";
     }
     if (imported_count > 0) {
         double imported_percent = imported_total * 100 / global_stats.total;
-        report << "3. 进口商品消费分析:\n";
-        report << "   - 进口商品消费占比: " << std::fixed << std::setprecision(1) << imported_percent << "%\n";
+        std::string line = i18n.t("advice_import_percent");
+        line = str_replace_all(line, "{percent}", std::to_string(imported_percent));
+        report << "3. " << i18n.t("advice_import_opt") << "\n";
+        report << "   - " << line << "\n";
         if (imported_percent > 30) {
-            report << "   - 进口商品比例较高，可考虑部分替换为国产品牌以节省开支\n";
+            report << "   - " << i18n.t("advice_import_high") << "\n";
         } else {
-            report << "   - 进口商品比例在合理范围，保持当前消费习惯\n";
+            report << "   - " << i18n.t("advice_import_normal") << "\n";
         }
     }
-    report << "\n==================== 报告结束 ====================\n";
+    report << "\n==================== " << i18n.t("end") << " ====================\n";
     report.close();
 }
