@@ -85,8 +85,17 @@ std::vector<Record> parse_csv(const std::string& filename) {
 
         // --- 修正：去除所有字段首尾空白和不可见字符 ---
         auto trim = [](std::string& s) {
-            s.erase(0, s.find_first_not_of(" \t\r\n\v\f"));
-            s.erase(s.find_last_not_of(" \t\r\n\v\f") + 1);
+            size_t start = s.find_first_not_of(" \t\r\n\v\f");
+            if (start == std::string::npos) {
+                s.clear();
+                return;
+            }
+            size_t end = s.find_last_not_of(" \t\r\n\v\f");
+            if (end == std::string::npos || end < start) {
+                s.clear();
+                return;
+            }
+            s = s.substr(start, end - start + 1);
         };
         trim(record.type);
         trim(record.remark);

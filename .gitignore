@@ -4,3 +4,4 @@ report.txt
 *.o
 vgcore.*
 *.log
+expense_analyzer

@@ -5,9 +5,11 @@
 nlohmann::json AnalysisResult::to_json() const {
     // 工具函数：trim和UTF-8校验
     auto trim = [](const std::string& s) -> std::string {
+        if (s.empty()) return "";
         size_t start = s.find_first_not_of(" \t\r\n\v\f");
+        if (start == std::string::npos) return "";
         size_t end = s.find_last_not_of(" \t\r\n\v\f");
-        if (start == std::string::npos || end == std::string::npos) return "";
+        if (end == std::string::npos || end < start) return "";
         return s.substr(start, end - start + 1);
     };
     auto is_valid_utf8 = [](const std::string& str) {
