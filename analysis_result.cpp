@@ -52,12 +52,7 @@ nlohmann::json AnalysisResult::to_json() const {
         cat_total[key] = kv.second;
     }
     j["category_total"] = cat_total;
-    nlohmann::json prod_total = nlohmann::json::object();
-    for (const auto& kv : product_total) {
-        std::string key = safe_str(kv.first, "product_total.key");
-        prod_total[key] = kv.second;
-    }
-    j["product_total"] = prod_total;
+    // 已移除 product_total 字段的生成
     // anomalies: vector<string>
     nlohmann::json anom = nlohmann::json::array();
     for (const auto& s : anomalies) {

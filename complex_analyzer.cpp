@@ -33,7 +33,7 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     // 按类别/产品统计
     for (const auto& r : records) {
         result.category_total[r.type] += r.amount;
-        result.product_total[r.product_name] += r.amount;
+        // 已移除 product_total 字段的统计
     }
     // 简单异常检测（如金额大于均值3倍）
     for (const auto& r : records) {
