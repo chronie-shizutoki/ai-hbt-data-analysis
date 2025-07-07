@@ -59,6 +59,62 @@ nlohmann::json AnalysisResult::to_json() const {
         anom.push_back(safe_str(s, "anomalies[]"));
     }
     j["anomalies"] = anom;
-    // ...可扩展更多分析字段...
+    // 多维聚类结果
+    nlohmann::json clusters_json = nlohmann::json::array();
+    for (const auto& c : clusters) {
+        nlohmann::json cj;
+        cj["label"] = safe_str(c.label, "clusters.label");
+        cj["member_indices"] = c.member_indices;
+        cj["cluster_total"] = c.cluster_total;
+        cj["avg_amount"] = c.avg_amount;
+        clusters_json.push_back(cj);
+    }
+    j["clusters"] = clusters_json;
+
+    // 用户画像
+    nlohmann::json profiles_json = nlohmann::json::array();
+    for (const auto& p : user_profiles) {
+        nlohmann::json pj;
+        pj["user_id"] = safe_str(p.user_id, "user_profiles.user_id");
+        pj["label"] = safe_str(p.label, "user_profiles.label");
+        pj["features"] = p.features;
+        profiles_json.push_back(pj);
+    }
+    j["user_profiles"] = profiles_json;
+
+    // 时序分析
+    nlohmann::json ts_json = nlohmann::json::array();
+    for (const auto& t : time_series) {
+        nlohmann::json tj;
+        tj["date"] = safe_str(t.date, "time_series.date");
+        tj["value"] = t.value;
+        ts_json.push_back(tj);
+    }
+    j["time_series"] = ts_json;
+
+    // 关联规则
+    nlohmann::json rules_json = nlohmann::json::array();
+    for (const auto& r : association_rules) {
+        nlohmann::json rj;
+        rj["lhs"] = r.lhs;
+        rj["rhs"] = r.rhs;
+        rj["support"] = r.support;
+        rj["confidence"] = r.confidence;
+        rj["lift"] = r.lift;
+        rules_json.push_back(rj);
+    }
+    j["association_rules"] = rules_json;
+
+    // 情感分析
+    nlohmann::json senti_json = nlohmann::json::array();
+    for (const auto& s : sentiment_analysis) {
+        nlohmann::json sj;
+        sj["remark"] = safe_str(s.remark, "sentiment_analysis.remark");
+        sj["sentiment"] = safe_str(s.sentiment, "sentiment_analysis.sentiment");
+        sj["score"] = s.score;
+        senti_json.push_back(sj);
+    }
+    j["sentiment_analysis"] = senti_json;
+
     return j;
 }
