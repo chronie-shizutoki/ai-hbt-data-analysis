@@ -9,7 +9,6 @@
   "median_amount": "消费金额中位数",
   "stddev_amount": "消费金额标准差",
   "category_analysis": "按消费类别分析",
-  "product_analysis": "按产品分析",
   "pattern_analysis": "消费模式识别",
   "blacklist_analysis": "黑名单消费分析",
   "import_analysis": "进口商品分析",

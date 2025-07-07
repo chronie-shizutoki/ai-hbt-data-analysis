@@ -16,7 +16,6 @@ struct AnalysisResult {
     double median_amount;
     double stddev_amount;
     std::map<std::string, double> category_total;
-    std::map<std::string, double> product_total;
     std::vector<std::string> anomalies;
     // ...可扩展更多分析字段...
 

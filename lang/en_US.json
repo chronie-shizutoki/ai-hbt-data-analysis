@@ -9,7 +9,6 @@
   "median_amount": "Median Consumption Amount",
   "stddev_amount": "Standard Deviation of Consumption Amount",
   "category_analysis": "Category Analysis",
-  "product_analysis": "Product Analysis",
   "pattern_analysis": "Consumption Pattern Recognition",
   "blacklist_analysis": "Blacklist Consumption Analysis",
   "import_analysis": "Imported Product Analysis",

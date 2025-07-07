@@ -60,21 +60,6 @@ void generate_report_i18n(const std::vector<Record>& records, const Stats& globa
         report << "  " << i18n.t("avg") << ": " << stat.avg << " " << i18n.t("per_time") << "\n";
         report << "  " << i18n.t("range") << ": " << stat.min << " - " << stat.max << " " << i18n.t("yuan") << "\n\n";
     }
-    // 按产品统计
-    report << "==================== " << i18n.t("product_analysis") << " ====================\n";
-    std::vector<std::pair<std::string, Stats>> sorted_products(product_stats.begin(), product_stats.end());
-    std::sort(sorted_products.begin(), sorted_products.end(), [](const auto& a, const auto& b) { return a.second.total > b.second.total; });
-    for (const auto& [product, stat] : sorted_products) {
-        report << "[" << product << "]\n";
-        report << "  " << i18n.t("product_total") << ": " << stat.total << " " << i18n.t("yuan") << "\n";
-        report << "  " << i18n.t("product_count") << ": " << stat.count << "\n";
-        if (unit_price_stats.count(product)) {
-            auto& price_stat = unit_price_stats.at(product);
-            report << "  " << i18n.t("unit_price_avg") << ": " << price_stat.avg << " " << i18n.t("yuan") << "\n";
-            report << "  " << i18n.t("unit_price_stddev") << ": ±" << price_stat.std_dev() << " " << i18n.t("yuan") << "\n";
-        }
-        report << "\n";
-    }
     // 消费模式识别
     int blacklist_count = 0, imported_count = 0;
     double blacklist_total = 0.0, imported_total = 0.0;
@@ -134,19 +119,6 @@ void generate_report_i18n(const std::vector<Record>& records, const Stats& globa
         while ((pos = line.find("{count}")) != std::string::npos) line.replace(pos, 7, std::to_string(count));
         while ((pos = line.find("{percent}")) != std::string::npos) line.replace(pos, 9, std::to_string(percent));
         report << "   - " << i18n.t(key) << ": " << line << "\n";
-    }
-    // 价格弹性分析
-    report << "==================== " << i18n.t("elasticity_analysis") << " ====================\n";
-    report << i18n.t("product") << "\t" << i18n.t("unit_price") << "\t" << i18n.t("total_sales") << "\t" << i18n.t("price_elasticity") << "\n";
-    for (const auto& [product, stat] : product_stats) {
-        if (unit_price_stats.find(product) == unit_price_stats.end()) continue;
-        double avg_price = unit_price_stats.at(product).avg;
-        double total_quantity = stat.count;
-        double elasticity = 0.0;
-        if (avg_price > 0 && total_quantity > 0) {
-            elasticity = -0.5 * (avg_price / 10.0);
-        }
-        report << product << "\t" << std::fixed << std::setprecision(2) << avg_price << "\t" << total_quantity << "\t" << elasticity << "\n";
     }
     // 月度趋势分析
     if (monthly_stats.size() > 1) {
