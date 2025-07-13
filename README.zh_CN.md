@@ -6,12 +6,13 @@
 
 ## 系统架构
 
-mermaid
+ ```mermaid
 graph LR
     A[Flutter/Web 前端] -- JSON API --> B[RESTful API]
     B -- JSON API --> C[C++ 高性能分析]
     C -- JSON API --> B
     B -- JSON API --> A
+ ```
 
 ### 分工与技术选型
 - **C++后端**：高性能聚类、异常检测、统计、时序预测、关联规则、用户画像、情感分析、数据导出、国际化、JSON标准输出，所有分析与智能算法均用C++实现。
