@@ -139,7 +139,11 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     }
     // 3. 指数平滑预测
     std::vector<double> hist_vals;
-    for (const auto& [_, val] : historical_month_total) hist_vals.push_back(val);
+    std::vector<std::string> hist_months;
+    for (const auto& [mon, val] : historical_month_total) {
+        hist_months.push_back(mon);
+        hist_vals.push_back(val);
+    }
     double this_month_pred = 0, next_month_pred = 0;
     if (!hist_vals.empty()) {
         const double alpha = 0.7;
@@ -151,6 +155,64 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
         else
             next_month_pred = this_month_pred;
     }
+
+
+    // === 进度修正：本月已发生+剩余天数预测 ===
+    // 统计本月已发生金额和天数
+    double current_partial = 0.0;
+    int current_days = 0;
+    int year = tm_now.tm_year+1900, month = tm_now.tm_mon+1;
+    char buf_this[16];
+    snprintf(buf_this, sizeof(buf_this), "%04d-%02d", year, month);
+    std::string this_month = buf_this;
+    // 安全日期计算函数提前
+    auto get_days_in_month = [](int y, int m) -> int {
+        static const int days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        if (m == 2 && ((y%4==0&&y%100!=0)||y%400==0)) return 29;
+        return days[m-1];
+    };
+    for (const auto& r : records) {
+        if (r.time.substr(0,7) == this_month) {
+            current_partial += r.amount;
+            current_days++;
+        }
+    }
+    int days_this = get_days_in_month(year, month);
+    int remaining_days = days_this - current_days;
+    double adjusted_this_month = current_partial + (this_month_pred * remaining_days / (days_this > 0 ? days_this : 30));
+
+    // === 季节性因子补偿：下月 ===
+    // 统计历史同月均值
+    int next_year = year, next_month = month+1;
+    if (next_month > 12) { next_month = 1; ++next_year; }
+    char buf_next[16];
+    snprintf(buf_next, sizeof(buf_next), "%04d-%02d", next_year, next_month);
+    std::string next_month_str = buf_next;
+    double seasonal_index = 1.0;
+    if (!hist_months.empty()) {
+        // 取历史所有同月
+        std::vector<double> same_month_vals;
+        for (size_t i = 0; i < hist_months.size(); ++i) {
+            int m = std::stoi(hist_months[i].substr(5,2));
+            if (m == next_month) same_month_vals.push_back(hist_vals[i]);
+        }
+        if (!same_month_vals.empty()) {
+            double mean_hist = std::accumulate(hist_vals.begin(), hist_vals.end(), 0.0) / hist_vals.size();
+            double mean_same = std::accumulate(same_month_vals.begin(), same_month_vals.end(), 0.0) / same_month_vals.size();
+            if (mean_hist > 1e-9) seasonal_index = mean_same / mean_hist;
+        }
+    }
+    double seasonal_next_month_pred = next_month_pred * seasonal_index;
+
+    // === 置信区间 ===
+    double std_dev = 0.0;
+    if (hist_vals.size() > 1) {
+        double mean = std::accumulate(hist_vals.begin(), hist_vals.end(), 0.0) / hist_vals.size();
+        for (auto v : hist_vals) std_dev += (v-mean)*(v-mean);
+        std_dev = sqrt(std_dev / (hist_vals.size()-1));
+    }
+    double ci_low = seasonal_next_month_pred - std_dev;
+    double ci_high = seasonal_next_month_pred + std_dev;
     // 4. 多月每日比例聚合
     std::array<double, 31> day_ratios{};
     int valid_months = 0;
@@ -168,23 +230,10 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     if (valid_months > 0) {
         for (int i=0; i<31; ++i) day_ratios[i] /= valid_months;
     }
-    // 5. 安全日期计算
-    auto get_days_in_month = [](int y, int m) -> int {
-        static const int days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-        if (m == 2 && ((y%4==0&&y%100!=0)||y%400==0)) return 29;
-        return days[m-1];
-    };
+    // ...已提前定义get_days_in_month...
     // 6. 生成本月、下月每日预测
-    int year = tm_now.tm_year+1900, month = tm_now.tm_mon+1;
-    snprintf(buf_month, sizeof(buf_month), "%04d-%02d", year, month);
-    std::string this_month = buf_month;
-    int next_year = year, next_month = month+1;
-    if (next_month > 12) { next_month = 1; ++next_year; }
-    snprintf(buf_month, sizeof(buf_month), "%04d-%02d", next_year, next_month);
-    std::string next_month_str = buf_month;
-    nlohmann::json daily_this, daily_next;
-    int days_this = get_days_in_month(year, month);
     int days_next = get_days_in_month(next_year, next_month);
+    nlohmann::json daily_this, daily_next;
     for (int d = 1; d <= days_this; ++d) {
         double ratio = day_ratios[d-1] > 1e-9 ? day_ratios[d-1] : 1.0/days_this;
         double val = this_month_pred * ratio;
@@ -193,11 +242,23 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     }
     for (int d = 1; d <= days_next; ++d) {
         double ratio = day_ratios[d-1] > 1e-9 ? day_ratios[d-1] : 1.0/days_next;
-        double val = next_month_pred * ratio;
+        double val = seasonal_next_month_pred * ratio;
         char datebuf[16]; snprintf(datebuf, sizeof(datebuf), "%s-%02d", next_month_str.c_str(), d);
         daily_next.push_back({{"date", datebuf}, {"value", val}});
     }
-    result.extra_json["monthly_predict"] = {{"this_month", { {"month", this_month}, {"total", this_month_pred} }}, {"next_month", { {"month", next_month_str}, {"total", next_month_pred} }}};
+    result.extra_json["monthly_predict"] = {
+        {"this_month", {
+            {"month", this_month},
+            {"total", this_month_pred},
+            {"adjusted", adjusted_this_month}
+        }},
+        {"next_month", {
+            {"month", next_month_str},
+            {"total", next_month_pred},
+            {"seasonal_adjusted", seasonal_next_month_pred},
+            {"confidence_interval", {ci_low, ci_high}}
+        }}
+    };
     result.extra_json["daily_predict"] = {{"this_month", daily_this}, {"next_month", daily_next}};
 
 
