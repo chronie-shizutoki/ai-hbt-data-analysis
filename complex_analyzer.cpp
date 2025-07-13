@@ -118,49 +118,77 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     }
 
     // ====== 时序分析（每日总额） ======
-    // ====== 时序分析+AR预测 ======
-    std::map<std::string, double> date_total;
+    // ====== 月度趋势与每日分布预测 ======
+    // 1. 按月聚合历史数据
+    std::map<std::string, double> month_total;
+    std::map<std::string, std::map<std::string, double>> month_day_total;
     for (const auto& r : records) {
-        date_total[r.time] += r.amount;
+        std::string month = r.time.substr(0, 7); // yyyy-MM
+        month_total[month] += r.amount;
+        month_day_total[month][r.time] += r.amount;
     }
-    // 按日期排序
-    std::vector<std::string> dates;
-    std::vector<double> values;
-    for (const auto& kv : date_total) {
-        dates.push_back(kv.first);
-        values.push_back(kv.second);
+    // 2. 生成月序列
+    std::vector<std::string> months;
+    std::vector<double> month_values;
+    for (const auto& kv : month_total) {
+        months.push_back(kv.first);
+        month_values.push_back(kv.second);
     }
-    // AR模型训练与预测
-    TimeSeriesForecaster forecaster;
-    forecaster.fit(values, 1); // AR(1)
-    int predict_steps = 3; // 预测未来3期
-    std::vector<double> preds = forecaster.predict(predict_steps);
-    // 填充历史数据
-    for (size_t i = 0; i < dates.size(); ++i) {
-        AnalysisResult::TimeSeriesPoint pt;
-        pt.date = dates[i];
-        pt.value = values[i];
-        result.time_series.push_back(pt);
+    // 3. 用AR(1)或滑动平均预测本月、下月总额
+    double this_month_pred = 0, next_month_pred = 0;
+    if (month_values.size() >= 2) {
+        // 简单滑动平均
+        this_month_pred = month_values.back();
+        next_month_pred = 0.5 * month_values.back() + 0.5 * month_values[month_values.size()-2];
+    } else if (month_values.size() == 1) {
+        this_month_pred = next_month_pred = month_values[0];
     }
-    // 填充预测数据（日期顺延，简单处理）
-    if (!dates.empty()) {
-        std::string last_date = dates.back();
-        int year, month, day;
-        if (sscanf(last_date.c_str(), "%d-%d-%d", &year, &month, &day) == 3) {
-            for (int i = 0; i < predict_steps; ++i) {
-                ++month;
-                if (month > 12) { month = 1; ++year; }
-                char buf[16];
-                snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month, day);
-                AnalysisResult::TimeSeriesPoint pt;
-                pt.date = buf;
-                pt.value = preds[i];
-                result.time_series.push_back(pt);
-            }
-        }
+    // 4. 取最近一个月的每日分布比例
+    std::string last_month = months.empty() ? "" : months.back();
+    std::map<std::string, double> last_month_days = month_day_total[last_month];
+    double last_month_sum = 0;
+    for (const auto& kv : last_month_days) last_month_sum += kv.second;
+    std::map<std::string, double> day_ratio;
+    for (const auto& kv : last_month_days) {
+        std::string day = kv.first.substr(8,2); // dd
+        day_ratio[day] = kv.second / last_month_sum;
     }
-    // AR模型参数写入extra_json
-    result.extra_json["ar_model"] = forecaster.to_json();
+    // 5. 生成本月、下月每日预测
+    auto get_days_in_month = [](int year, int month) -> int {
+        static const int days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        if (month == 2 && ((year%4==0&&year%100!=0)||year%400==0)) return 29;
+        return days[month-1];
+    };
+    // 获取本月、下月
+    struct tm* tm_now = localtime(&now);
+    int year = tm_now->tm_year+1900, month = tm_now->tm_mon+1;
+    snprintf(buf, sizeof(buf), "%04d-%02d", year, month);
+    std::string this_month = buf;
+    int next_year = year, next_month = month+1;
+    if (next_month > 12) { next_month = 1; ++next_year; }
+    snprintf(buf, sizeof(buf), "%04d-%02d", next_year, next_month);
+    std::string next_month_str = buf;
+    // 生成每日预测
+    nlohmann::json daily_this, daily_next;
+    int days_this = get_days_in_month(year, month);
+    int days_next = get_days_in_month(next_year, next_month);
+    for (int d = 1; d <= days_this; ++d) {
+        char daybuf[16]; snprintf(daybuf, sizeof(daybuf), "%02d", d);
+        double ratio = day_ratio.count(daybuf) ? day_ratio[daybuf] : 1.0/days_this;
+        double val = this_month_pred * ratio;
+        char datebuf[16]; snprintf(datebuf, sizeof(datebuf), "%s-%02d", this_month.c_str(), d);
+        daily_this.push_back({{"date", datebuf}, {"value", val}});
+    }
+    for (int d = 1; d <= days_next; ++d) {
+        char daybuf[16]; snprintf(daybuf, sizeof(daybuf), "%02d", d);
+        double ratio = day_ratio.count(daybuf) ? day_ratio[daybuf] : 1.0/days_next;
+        double val = next_month_pred * ratio;
+        char datebuf[16]; snprintf(datebuf, sizeof(datebuf), "%s-%02d", next_month_str.c_str(), d);
+        daily_next.push_back({{"date", datebuf}, {"value", val}});
+    }
+    // 输出到extra_json
+    result.extra_json["monthly_predict"] = {{"this_month", { {"month", this_month}, {"total", this_month_pred} }}, {"next_month", { {"month", next_month_str}, {"total", next_month_pred} }}};
+    result.extra_json["daily_predict"] = {{"this_month", daily_this}, {"next_month", daily_next}};
 
 
     // ====== 简单情感分析（基于关键词） ======
