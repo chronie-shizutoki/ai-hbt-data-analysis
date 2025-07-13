@@ -1,6 +1,6 @@
 # ai-hbt-data-analysis
 
-一个面向家庭消费账本的高级消费分析系统，采用 C++ 高性能后端、Python 智能分析、Web/Flutter 前端混合架构，支持多维聚类、异常检测、时序预测、关联规则、用户画像、情感分析、可视化等功能，具备多语言、模块化、标准 JSON 接口、可扩展性和合规性。
+一个面向家庭消费账本的高级消费分析系统，采用 C++ 高性能后端、Web/Flutter 前端混合架构，支持多维聚类、异常检测、时序预测、关联规则、用户画像、情感分析、可视化等功能，具备多语言、模块化、标准 JSON 接口、可扩展性和合规性。所有分析与智能算法均用C++实现。
 
 ---
 
@@ -10,22 +10,15 @@
 ┌────────────┐      ┌──────────────┐      ┌────────────┐
 │  Flutter   │◀───▶│ RESTful API  │◀───▶│   C++后端   │
 │/Web前端    │      │(JSON接口)    │      │(高性能分析) │
-└────────────┘      └──────────────┘      └─────┬──────┘
-                                                │
-                                         ┌──────▼─────┐
-                                         │ Python智能 │
-                                         │ 分析模块   │
-                                         └────────────┘
+└────────────┘      └──────────────┘      └────────────┘
 ```
 
 ### 分工与技术选型
-- **C++后端**：高性能基础聚类、异常检测、基础统计、数据导出、国际化、JSON标准输出。
-- **Python分析**：复杂聚类（KMeans/DBSCAN）、时序预测（Prophet/LSTM/ARIMA）、关联规则（Apriori/FP-Growth）、复杂情感分析（NLP/transformers）、多维用户画像。
+- **C++后端**：高性能聚类、异常检测、统计、时序预测、关联规则、用户画像、情感分析、数据导出、国际化、JSON标准输出，所有分析与智能算法均用C++实现。
 - **前端（Flutter/Web）**：交互式可视化（ECharts/Plotly）、报表展示、用户自定义分析、数据钻取。
 
 ### 推荐技术栈
-- C++17/20，nlohmann/json，标准库，GoogleTest
-- Python 3.8+，pandas，scikit-learn，prophet，transformers，mlxtend等
+- C++17/20，nlohmann/json，标准库，GoogleTest，OpenCV/mlpack/dlib/Eigen/Armadillo（按需）
 - Flutter 3.x，Dart，ECharts/Plotly，RESTful API
 
 ---
@@ -48,12 +41,7 @@ make
 ```
 支持命令行参数：输入CSV、输出JSON/文本、选择语言、分析类型等。
 
-### 2. Python智能分析
-1. C++导出标准数据（如CSV/JSON）
-2. Python脚本读取数据，进行时序预测/复杂聚类/情感分析等
-3. Python输出结果JSON，C++/前端集成展示
-
-### 3. 前端可视化
+### 2. 前端可视化
 - 通过RESTful API获取分析结果，支持ECharts/Plotly等可视化库
 - 支持Flutter桌面/移动/Web多端展示
 
@@ -61,16 +49,14 @@ make
 
 ## 接口规范
 - C++后端输出标准JSON，字段含义详见 `analysis.json` 示例
-- Python分析结果需与C++接口兼容，便于集成
 - 前端通过RESTful接口获取数据，支持多语言/多主题
 
 ---
 
 ## 开发与部署
 1. C++：`make` 编译，主程序 `expense_analyzer`，支持多平台
-2. Python：推荐虚拟环境，依赖见 `requirements.txt`（需自建）
-3. 前端：Flutter 3.x，详见前端子项目说明
-4. CI/CD：Makefile/CMake + GitHub Actions（持续集成预留）
+2. 前端：Flutter 3.x，详见前端子项目说明
+3. CI/CD：Makefile/CMake + GitHub Actions（持续集成预留）
 
 ---
 
