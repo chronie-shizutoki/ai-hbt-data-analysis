@@ -10,12 +10,12 @@ An advanced household expense analysis system featuring a high-performance C++ b
 
 ## System Architecture
 
-```
-┌────────────┐      ┌──────────────┐      ┌────────────┐
-│  Flutter   │◀───▶│ RESTful API  │◀───▶│   C++ Core  │
-│/Web Front  │      │ (JSON API)   │      │ (Analysis) │
-└────────────┘      └──────────────┘      └────────────┘
-```
+mermaid
+graph LR
+    A[Flutter/Web Frontend] -- JSON API --> B[RESTful API]
+    B -- JSON API --> C[C++ Core Analysis]
+    C -- JSON API --> B
+    B -- JSON API --> A
 
 ### Module Responsibilities & Tech Stack
 - **C++ Backend**: High-performance clustering, anomaly detection, statistics, time series forecasting, association rule mining, user profiling, sentiment analysis, data export, i18n, standard JSON output—all analytics implemented in C++.
