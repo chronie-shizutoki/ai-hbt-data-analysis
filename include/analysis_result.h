@@ -6,6 +6,8 @@
 #include <json.hpp>
 
 struct AnalysisResult {
+    // 可选：扩展字段，便于输出额外模型信息
+    nlohmann::json extra_json;
     std::string lang;
     std::string generated_time;
     size_t total_records;

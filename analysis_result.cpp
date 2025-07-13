@@ -118,5 +118,12 @@ nlohmann::json AnalysisResult::to_json() const {
     }
     j["sentiment_analysis"] = senti_json;
 
+    // 扩展字段：如AR模型参数等
+    if (!extra_json.is_null() && !extra_json.empty()) {
+        for (auto it = extra_json.begin(); it != extra_json.end(); ++it) {
+            j[it.key()] = it.value();
+        }
+    }
+
     return j;
 }

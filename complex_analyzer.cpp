@@ -1,5 +1,6 @@
 #include "include/complex_analyzer.h"
 #include <ctime>
+#include "include/stats.h"
 #include <algorithm>
 #include <numeric>
 #include <set>
@@ -117,16 +118,49 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     }
 
     // ====== 时序分析（每日总额） ======
+    // ====== 时序分析+AR预测 ======
     std::map<std::string, double> date_total;
     for (const auto& r : records) {
         date_total[r.time] += r.amount;
     }
+    // 按日期排序
+    std::vector<std::string> dates;
+    std::vector<double> values;
     for (const auto& kv : date_total) {
+        dates.push_back(kv.first);
+        values.push_back(kv.second);
+    }
+    // AR模型训练与预测
+    TimeSeriesForecaster forecaster;
+    forecaster.fit(values, 1); // AR(1)
+    int predict_steps = 3; // 预测未来3期
+    std::vector<double> preds = forecaster.predict(predict_steps);
+    // 填充历史数据
+    for (size_t i = 0; i < dates.size(); ++i) {
         AnalysisResult::TimeSeriesPoint pt;
-        pt.date = kv.first;
-        pt.value = kv.second;
+        pt.date = dates[i];
+        pt.value = values[i];
         result.time_series.push_back(pt);
     }
+    // 填充预测数据（日期顺延，简单处理）
+    if (!dates.empty()) {
+        std::string last_date = dates.back();
+        int year, month, day;
+        if (sscanf(last_date.c_str(), "%d-%d-%d", &year, &month, &day) == 3) {
+            for (int i = 0; i < predict_steps; ++i) {
+                ++month;
+                if (month > 12) { month = 1; ++year; }
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month, day);
+                AnalysisResult::TimeSeriesPoint pt;
+                pt.date = buf;
+                pt.value = preds[i];
+                result.time_series.push_back(pt);
+            }
+        }
+    }
+    // AR模型参数写入extra_json
+    result.extra_json["ar_model"] = forecaster.to_json();
 
 
     // ====== 简单情感分析（基于关键词） ======
