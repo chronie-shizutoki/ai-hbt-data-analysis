@@ -1,7 +1,47 @@
+
 #include "include/stats.h"
 #include "include/record.h"
+#include <numeric>
 #include <algorithm>
 #include <cmath>
+
+// 简单自回归(AR)模型实现
+void TimeSeriesForecaster::fit(const std::vector<double>& data, int order) {
+    ar_order = order;
+    train_data = data;
+    // 仅实现AR(1)最小二乘拟合
+    ar_coeffs.clear();
+    if ((int)data.size() <= order) return;
+    double num = 0.0, denom = 0.0;
+    for (size_t i = order; i < data.size(); ++i) {
+        num += data[i] * data[i-1];
+        denom += data[i-1] * data[i-1];
+    }
+    if (denom != 0)
+        ar_coeffs.push_back(num / denom);
+    else
+        ar_coeffs.push_back(0.0);
+}
+
+std::vector<double> TimeSeriesForecaster::predict(int steps) const {
+    std::vector<double> result;
+    if (train_data.empty() || ar_coeffs.empty()) return result;
+    double last = train_data.back();
+    for (int i = 0; i < steps; ++i) {
+        double pred = ar_coeffs[0] * last;
+        result.push_back(pred);
+        last = pred;
+    }
+    return result;
+}
+
+nlohmann::json TimeSeriesForecaster::to_json() const {
+    nlohmann::json j;
+    j["ar_order"] = ar_order;
+    j["ar_coeffs"] = ar_coeffs;
+    j["train_data"] = train_data;
+    return j;
+}
 
 void Stats::add_value(double value) {
     total += value;
