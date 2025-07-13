@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "iomanip": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "chrono": "cpp",
+        "span": "cpp"
     }
 }

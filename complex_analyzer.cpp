@@ -1,5 +1,7 @@
 #include "include/complex_analyzer.h"
 #include <ctime>
+#include <chrono>
+#include <array>
 #include "include/stats.h"
 #include <algorithm>
 #include <numeric>
@@ -117,76 +119,84 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
         result.user_profiles.push_back(kv.second);
     }
 
-    // ====== 时序分析（每日总额） ======
-    // ====== 月度趋势与每日分布预测 ======
-    // 1. 按月聚合历史数据
-    std::map<std::string, double> month_total;
+    // ====== 修正版：安全时间、排除当前月、指数平滑、跨月日分布 ======
+    // 1. 安全获取当前时间
+    auto chrono_now = std::chrono::system_clock::now();
+    time_t t_now = std::chrono::system_clock::to_time_t(chrono_now);
+    struct tm tm_now;
+    localtime_r(&t_now, &tm_now);
+    char buf_month[16];
+    snprintf(buf_month, sizeof(buf_month), "%04d-%02d", tm_now.tm_year+1900, tm_now.tm_mon+1);
+    const std::string current_month = buf_month;
+    // 2. 月度聚合，排除当前月
+    std::map<std::string, double> historical_month_total;
     std::map<std::string, std::map<std::string, double>> month_day_total;
     for (const auto& r : records) {
-        std::string month = r.time.substr(0, 7); // yyyy-MM
-        month_total[month] += r.amount;
+        std::string month = r.time.substr(0, 7);
+        if (month == current_month) continue;
+        historical_month_total[month] += r.amount;
         month_day_total[month][r.time] += r.amount;
     }
-    // 2. 生成月序列
-    std::vector<std::string> months;
-    std::vector<double> month_values;
-    for (const auto& kv : month_total) {
-        months.push_back(kv.first);
-        month_values.push_back(kv.second);
-    }
-    // 3. 用AR(1)或滑动平均预测本月、下月总额
+    // 3. 指数平滑预测
+    std::vector<double> hist_vals;
+    for (const auto& [_, val] : historical_month_total) hist_vals.push_back(val);
     double this_month_pred = 0, next_month_pred = 0;
-    if (month_values.size() >= 2) {
-        // 简单滑动平均
-        this_month_pred = month_values.back();
-        next_month_pred = 0.5 * month_values.back() + 0.5 * month_values[month_values.size()-2];
-    } else if (month_values.size() == 1) {
-        this_month_pred = next_month_pred = month_values[0];
+    if (!hist_vals.empty()) {
+        const double alpha = 0.7;
+        this_month_pred = hist_vals.back();
+        for (int i = hist_vals.size()-1; i > 0; --i)
+            this_month_pred = alpha * hist_vals[i] + (1-alpha) * this_month_pred;
+        if (hist_vals.size() >= 2)
+            next_month_pred = this_month_pred + 0.5*(hist_vals.back() - hist_vals[hist_vals.size()-2]);
+        else
+            next_month_pred = this_month_pred;
     }
-    // 4. 取最近一个月的每日分布比例
-    std::string last_month = months.empty() ? "" : months.back();
-    std::map<std::string, double> last_month_days = month_day_total[last_month];
-    double last_month_sum = 0;
-    for (const auto& kv : last_month_days) last_month_sum += kv.second;
-    std::map<std::string, double> day_ratio;
-    for (const auto& kv : last_month_days) {
-        std::string day = kv.first.substr(8,2); // dd
-        day_ratio[day] = kv.second / last_month_sum;
+    // 4. 多月每日比例聚合
+    std::array<double, 31> day_ratios{};
+    int valid_months = 0;
+    for (const auto& [month, _] : historical_month_total) {
+        if (month_day_total[month].empty()) continue;
+        double month_sum = 0;
+        for (const auto& [date, amount] : month_day_total[month]) month_sum += amount;
+        if (month_sum < 1e-9) continue;
+        for (const auto& [date, amount] : month_day_total[month]) {
+            int day = std::stoi(date.substr(8,2));
+            if (day >=1 && day <=31) day_ratios[day-1] += amount/month_sum;
+        }
+        valid_months++;
     }
-    // 5. 生成本月、下月每日预测
-    auto get_days_in_month = [](int year, int month) -> int {
+    if (valid_months > 0) {
+        for (int i=0; i<31; ++i) day_ratios[i] /= valid_months;
+    }
+    // 5. 安全日期计算
+    auto get_days_in_month = [](int y, int m) -> int {
         static const int days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-        if (month == 2 && ((year%4==0&&year%100!=0)||year%400==0)) return 29;
-        return days[month-1];
+        if (m == 2 && ((y%4==0&&y%100!=0)||y%400==0)) return 29;
+        return days[m-1];
     };
-    // 获取本月、下月
-    struct tm* tm_now = localtime(&now);
-    int year = tm_now->tm_year+1900, month = tm_now->tm_mon+1;
-    snprintf(buf, sizeof(buf), "%04d-%02d", year, month);
-    std::string this_month = buf;
+    // 6. 生成本月、下月每日预测
+    int year = tm_now.tm_year+1900, month = tm_now.tm_mon+1;
+    snprintf(buf_month, sizeof(buf_month), "%04d-%02d", year, month);
+    std::string this_month = buf_month;
     int next_year = year, next_month = month+1;
     if (next_month > 12) { next_month = 1; ++next_year; }
-    snprintf(buf, sizeof(buf), "%04d-%02d", next_year, next_month);
-    std::string next_month_str = buf;
-    // 生成每日预测
+    snprintf(buf_month, sizeof(buf_month), "%04d-%02d", next_year, next_month);
+    std::string next_month_str = buf_month;
     nlohmann::json daily_this, daily_next;
     int days_this = get_days_in_month(year, month);
     int days_next = get_days_in_month(next_year, next_month);
     for (int d = 1; d <= days_this; ++d) {
-        char daybuf[16]; snprintf(daybuf, sizeof(daybuf), "%02d", d);
-        double ratio = day_ratio.count(daybuf) ? day_ratio[daybuf] : 1.0/days_this;
+        double ratio = day_ratios[d-1] > 1e-9 ? day_ratios[d-1] : 1.0/days_this;
         double val = this_month_pred * ratio;
         char datebuf[16]; snprintf(datebuf, sizeof(datebuf), "%s-%02d", this_month.c_str(), d);
         daily_this.push_back({{"date", datebuf}, {"value", val}});
     }
     for (int d = 1; d <= days_next; ++d) {
-        char daybuf[16]; snprintf(daybuf, sizeof(daybuf), "%02d", d);
-        double ratio = day_ratio.count(daybuf) ? day_ratio[daybuf] : 1.0/days_next;
+        double ratio = day_ratios[d-1] > 1e-9 ? day_ratios[d-1] : 1.0/days_next;
         double val = next_month_pred * ratio;
         char datebuf[16]; snprintf(datebuf, sizeof(datebuf), "%s-%02d", next_month_str.c_str(), d);
         daily_next.push_back({{"date", datebuf}, {"value", val}});
     }
-    // 输出到extra_json
     result.extra_json["monthly_predict"] = {{"this_month", { {"month", this_month}, {"total", this_month_pred} }}, {"next_month", { {"month", next_month_str}, {"total", next_month_pred} }}};
     result.extra_json["daily_predict"] = {{"this_month", daily_this}, {"next_month", daily_next}};
 
