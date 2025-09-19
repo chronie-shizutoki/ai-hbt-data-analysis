@@ -73,17 +73,10 @@ std::vector<Record> parse_csv(const std::string& filename) {
         std::stringstream ss(line);
         Record record;
         std::string amount_str;
-        if (!getline(ss, record.type, ',')) continue;
-        if (!getline(ss, record.remark, ',')) continue;
-        if (!getline(ss, amount_str, ',')) continue;
-        if (!getline(ss, record.time, ',')) {
-            // 兼容部分行无多余字段
-            if (!getline(ss, record.time)) continue;
-        }
-        // 兼容多余字段
-        getline(ss, record.extra);
-
-        // --- 修正：去除所有字段首尾空白和不可见字符 ---
+if (!std::getline(ss, record.time, ',')) continue;
+        if (!std::getline(ss, amount_str, ',')) continue;
+        if (!std::getline(ss, record.type, ',')) continue;
+        if (!std::getline(ss, record.remark, ',')) continue;
         auto trim = [](std::string& s) {
             size_t start = s.find_first_not_of(" \t\r\n\v\f");
             if (start == std::string::npos) {
@@ -97,6 +90,16 @@ std::vector<Record> parse_csv(const std::string& filename) {
             }
             s = s.substr(start, end - start + 1);
         };
+
+        std::string is_imported_str;
+        if (getline(ss, is_imported_str)) {
+            // Trim whitespace from is_imported_str before comparison
+            trim(is_imported_str);
+            record.is_imported = (is_imported_str == "true");
+        }
+
+
+
         trim(record.type);
         trim(record.remark);
         trim(amount_str);

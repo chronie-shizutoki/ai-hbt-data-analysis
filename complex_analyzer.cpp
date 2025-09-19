@@ -1,8 +1,10 @@
 #include "include/complex_analyzer.h"
+#include "include/cluster_info.h"
 #include <ctime>
 #include <chrono>
 #include <array>
 #include "include/stats.h"
+#include <iostream>
 #include <algorithm>
 #include <numeric>
 #include <set>
@@ -38,45 +40,30 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
         result.category_total[r.type] += r.amount;
         // 已移除 product_total 字段的统计
     }
-    // 简单异常检测（如金额大于均值3倍）
-    for (const auto& r : records) {
-        if (r.amount > result.avg_amount * 3) {
-            result.anomalies.push_back(r.remark + " (" + std::to_string(r.amount) + ")");
-        }
+    // ====== 复杂异常检测（Isolation Forest 模拟） ======
+    AnomalyDetector anomaly_detector;
+    // 假设异常比例为 0.05 (5%)
+    std::vector<size_t> anomaly_indices = anomaly_detector.detect(records, 0.05);
+    for (size_t idx : anomaly_indices) {
+        result.anomalies.push_back(records[idx].remark + " (" + std::to_string(records[idx].amount) + ")");
     }
-    // ====== 复杂KMeans风格聚类（按金额+类别+黑名单等多维特征，分3组） ======
-    if (!amounts.empty()) {
-        // 1. 计算均值和标准差
-        double mean = result.avg_amount;
-        double stddev = result.stddev_amount;
-        // 2. 预设3类：高消费（>mean+stddev）、中等（mean±stddev）、低消费（<mean-stddev）
-        AnalysisResult::ClusterInfo high, mid, low;
-        high.label = i18n.t("cluster_high");
-        mid.label = i18n.t("cluster_mid");
-        low.label = i18n.t("cluster_low");
-        for (size_t i = 0; i < records.size(); ++i) {
-            double amt = records[i].amount;
-            bool is_black = records[i].remark.find(i18n.t("blacklist")) != std::string::npos;
-            if (amt > mean + stddev) {
-                high.member_indices.push_back(i);
-                high.cluster_total += amt;
-                if (is_black) high.label += "(" + i18n.t("blacklist") + ")";
-            } else if (amt < mean - stddev) {
-                low.member_indices.push_back(i);
-                low.cluster_total += amt;
-                if (is_black) low.label += "(" + i18n.t("blacklist") + ")";
-            } else {
-                mid.member_indices.push_back(i);
-                mid.cluster_total += amt;
-                if (is_black) mid.label += "(" + i18n.t("blacklist") + ")";
-            }
-        }
-        high.avg_amount = high.member_indices.empty() ? 0.0 : high.cluster_total / high.member_indices.size();
-        mid.avg_amount = mid.member_indices.empty() ? 0.0 : mid.cluster_total / mid.member_indices.size();
-        low.avg_amount = low.member_indices.empty() ? 0.0 : low.cluster_total / low.member_indices.size();
-        if (!high.member_indices.empty()) result.clusters.push_back(high);
-        if (!mid.member_indices.empty()) result.clusters.push_back(mid);
-        if (!low.member_indices.empty()) result.clusters.push_back(low);
+    // ====== 复杂KMeans风格聚类 ======
+    ClusterAnalyzer cluster_analyzer;
+    // 假设分为3个集群
+    std::vector<ClusterInfo> temp_clusters = cluster_analyzer.kmeans_cluster(records, 3);
+    for (const auto& tc : temp_clusters) {
+        ClusterInfo ar_cluster;
+        ar_cluster.label = tc.label;
+        ar_cluster.member_indices = tc.member_indices;
+        ar_cluster.cluster_total = tc.cluster_total;
+        ar_cluster.avg_amount = tc.avg_amount;
+        result.clusters.push_back(ar_cluster);
+    }
+    // 更新集群标签为国际化文本
+    for (auto& cluster : result.clusters) {
+        if (cluster.label == "Cluster 1") cluster.label = i18n.t("cluster_high");
+        else if (cluster.label == "Cluster 2") cluster.label = i18n.t("cluster_mid");
+        else if (cluster.label == "Cluster 3") cluster.label = i18n.t("cluster_low");
     }
 
     // ====== 复杂用户画像（多维特征：礼物、黑名单、进口、频率、均值等） ======
@@ -204,6 +191,15 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     }
     double seasonal_next_month_pred = next_month_pred * seasonal_index;
 
+    // AR模型改进预测
+    double ar_prediction = seasonal_next_month_pred;
+    if (hist_vals.size() >= 2) {
+        double phi1 = 0.5; // 自回归系数，可调
+        double mean_hist = std::accumulate(hist_vals.begin(), hist_vals.end(), 0.0) / hist_vals.size();
+        ar_prediction = mean_hist + phi1 * (hist_vals.back() - mean_hist);
+        seasonal_next_month_pred = (seasonal_next_month_pred + ar_prediction) / 2.0; // 结合指数平滑和AR
+    }
+
     // === 置信区间 ===
     double std_dev = 0.0;
     if (hist_vals.size() > 1) {
@@ -262,55 +258,62 @@ AnalysisResult complex_analysis(const std::vector<Record>& records, const I18N& 
     result.extra_json["daily_predict"] = {{"this_month", daily_this}, {"next_month", daily_next}};
 
 
-    // ====== 简单情感分析（基于关键词） ======
-    for (const auto& r : records) {
-        AnalysisResult::SentimentResult senti;
-        senti.remark = r.remark;
-        // 简单规则：有“差”、“不好”、“极差”、“黑名单”判为负面，有“好”、“喜欢”、“满意”判为正面
-        if (r.remark.find(i18n.t("blacklist")) != std::string::npos ||
-            r.remark.find("差") != std::string::npos ||
-            r.remark.find("不好") != std::string::npos ||
-            r.remark.find("极差") != std::string::npos) {
-            senti.sentiment = "negative";
-            senti.score = -1.0;
-        } else if (r.remark.find("好") != std::string::npos ||
-                   r.remark.find("喜欢") != std::string::npos ||
-                   r.remark.find("满意") != std::string::npos) {
-            senti.sentiment = "positive";
-            senti.score = 1.0;
-        } else {
-            senti.sentiment = "neutral";
-            senti.score = 0.0;
+    // ====== 复杂情感分析 ======
+    SentimentAnalyzer sentiment_analyzer;
+    if (!sentiment_analyzer.load("lang/sentiment.json")) {
+        std::cerr << "警告: 情感词典加载失败，将使用简单情感分析。" << std::endl;
+        // Fallback to simple sentiment analysis if loading fails
+        for (const auto& r : records) {
+            AnalysisResult::SentimentResult senti;
+            senti.remark = r.remark;
+            if (r.remark.find(i18n.t("blacklist")) != std::string::npos ||
+                r.remark.find("差") != std::string::npos ||
+                r.remark.find("不好") != std::string::npos ||
+                r.remark.find("极差") != std::string::npos) {
+                senti.sentiment = "negative";
+                senti.score = -1.0;
+            } else if (r.remark.find("好") != std::string::npos ||
+                       r.remark.find("喜欢") != std::string::npos ||
+                       r.remark.find("满意") != std::string::npos) {
+                senti.sentiment = "positive";
+                senti.score = 1.0;
+            } else {
+                senti.sentiment = "neutral";
+                senti.score = 0.0;
+            }
+            result.sentiment_analysis.push_back(senti);
         }
-        result.sentiment_analysis.push_back(senti);
+    } else {
+        for (const auto& r : records) {
+            AnalysisResult::SentimentResult senti;
+            senti.remark = r.remark;
+            auto [sentiment_label, sentiment_score] = sentiment_analyzer.analyze(r.remark);
+            senti.sentiment = sentiment_label;
+            senti.score = sentiment_score;
+            result.sentiment_analysis.push_back(senti);
+        }
     }
 
-    // ====== 简单关联规则挖掘（同一天/同类别高频组合） ======
-    // 统计同一天出现的类别组合
-    std::map<std::string, std::set<std::string>> date_types;
+    // ====== 关联规则挖掘（Apriori算法） ======
+    std::vector<std::vector<std::string>> transactions;
+    std::map<std::string, std::vector<std::string>> date_to_types;
     for (const auto& r : records) {
-        date_types[r.time].insert(r.type);
+        date_to_types[r.time].push_back(r.type);
     }
-    std::map<std::pair<std::string, std::string>, int> pair_count;
-    for (const auto& kv : date_types) {
-        const auto& types = kv.second;
-        for (auto it1 = types.begin(); it1 != types.end(); ++it1) {
-            for (auto it2 = std::next(it1); it2 != types.end(); ++it2) {
-                pair_count[{*it1, *it2}]++;
-            }
-        }
+    for (const auto& pair : date_to_types) {
+        std::vector<std::string> unique_types;
+        std::vector<std::string> current_types = pair.second;
+        std::sort(current_types.begin(), current_types.end());
+        std::unique_copy(current_types.begin(), current_types.end(), std::back_inserter(unique_types));
+        transactions.push_back(unique_types);
     }
-    int total_days = date_types.size();
-    for (const auto& kv : pair_count) {
-        if (kv.second < 2) continue; // 只输出高频组合
-        AnalysisResult::AssociationRule rule;
-        rule.lhs = {kv.first.first};
-        rule.rhs = {kv.first.second};
-        rule.support = double(kv.second) / total_days;
-        rule.confidence = rule.support; // 简化
-        rule.lift = 1.0; // 简化
-        result.association_rules.push_back(rule);
-    }
+
+    double min_support = 0.1; // 最小支持度
+    double min_confidence = 0.5; // 最小置信度
+    result.association_rules = run_apriori(transactions, min_support, min_confidence);
 
     return result;
 }
+
+#include "include/cluster_info.h"
+

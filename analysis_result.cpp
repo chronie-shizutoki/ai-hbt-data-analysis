@@ -98,8 +98,8 @@ nlohmann::json AnalysisResult::to_json() const {
     nlohmann::json rules_json = nlohmann::json::array();
     for (const auto& r : association_rules) {
         nlohmann::json rj;
-        rj["lhs"] = r.lhs;
-        rj["rhs"] = r.rhs;
+        rj["antecedent"] = r.antecedent;
+        rj["consequent"] = r.consequent;
         rj["support"] = r.support;
         rj["confidence"] = r.confidence;
         rj["lift"] = r.lift;

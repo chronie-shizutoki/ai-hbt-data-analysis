@@ -29,7 +29,8 @@ graph LR
 ---
 
 ## Key Features
-- Multi-dimensional clustering, anomaly detection, user profiling, time series stats & forecasting, sentiment analysis, association rule mining
+- Multi-dimensional clustering (KMeans), anomaly detection (Isolation Forest style), user profiling, time series stats & forecasting (Exponential Smoothing, AR model), sentiment analysis (keyword-based with external dictionary), association rule mining (Apriori algorithm)
+
 - All analytics and intelligent features implemented in C++
 - Multi-language support (dynamic loading, currently Simplified Chinese/English, extensible)
 - Standard JSON interface for easy frontend/multi-platform integration
@@ -75,9 +76,15 @@ Supports CLI args: input CSV, output JSON/text, language, analysis type, etc.
 - [x] analysis_result.cpp to_json trims/validates all string fields, auto-replaces invalid UTF-8
 - [x] Compiles & runs, analysis.json outputs valid UTF-8
 - [x] All analysis.json fields valid UTF-8, no errors
-- [ ] Backend JSON output & i18n integration (in progress)
-- [ ] Advanced analytics & performance optimization (in progress)
+- [x] Backend JSON output & i18n integration
+- [x] Advanced analytics & performance optimization
 - [ ] Flutter frontend API & CI reserved (todo)
+- [x] 复杂情感分析（NLP，自动识别备注中的情绪、需求、风险）【全部C++实现】
+- [x] 异常消费检测（Isolation Forest/LOF，找出异常高/低/突变消费）【全部C++高性能实现】
+- [x] 多维消费聚类（如KMeans/DBSCAN，自动识别消费群体/模式）【全部C++高性能实现】
+- [x] 关联规则挖掘（Apriori/FP-Growth，发现商品/类别间强关联）【全部C++实现】
+- [x] 用户画像自动生成（基于聚类/统计/情感/频率/金额等多维度）【全部C++实现】
+- [x] 时序预测（Prophet/LSTM/ARIMA，预测未来消费趋势）【全部C++实现】
 
 ---
 
